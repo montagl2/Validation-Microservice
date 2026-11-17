@@ -80,5 +80,4 @@ Run the test program in another terminal:
 The test program sends requests to the microservice and checks the responses for all three user stories, error handling, and performance.
 
 ## UML Sequence Diagram
-
-To be added.
+![Validation Service UML Sequence Diagram](validation-sequence.png)![Validation Service UML Sequence Diagram](validation-sequence.png)
