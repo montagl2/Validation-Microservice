@@ -47,6 +47,16 @@ def validate_date(value):
         return False, ["INVALID_CALENDAR_DATE: Date does not exist"]
 
 
+# print the data received and the data sent back for every request
+@app.after_request
+def log_request_and_response(response):
+    # bulk callers (like the performance test) can opt out of the printout
+    if request.headers.get("X-Quiet"):
+        return response
+    print(f"\n  REQUEST RECEIVED:  {request.get_json(silent=True)}")
+    print(f"  RESPONSE SENT:     HTTP {response.status_code} {response.get_json(silent=True)}", flush=True)
+    return response
+
 # define the primary http post endpoint for all validation checks
 @app.route("/validate", methods=["POST"])
 def validate():

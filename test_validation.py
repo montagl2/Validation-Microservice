@@ -24,6 +24,15 @@ class TestValidationMicroservice(unittest.TestCase):
                 "Please make sure you have started your Flask server by running 'python app.py' in another terminal window first!\n"
             ) from e
 
+    #Helper function for displaying data
+    def send(self, payload):
+        """send a request to the microservice and print the data sent and received"""
+        print(f"\n  REQUEST SENT:      {payload}")
+        response = requests.post(BASE_URL, json=payload)
+        res = response.json()
+        print(f"  RESPONSE RECEIVED: HTTP {response.status_code} {res}")
+        return res
+
     # USER STORY 1: Required Fields Validation
     def test_us1_missing_required_field(self):
         """test that a record with a blank required field is rejected"""
@@ -32,7 +41,7 @@ class TestValidationMicroservice(unittest.TestCase):
             "required_fields": ["item name"],
             "value": {"item name": ""},
         }
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertFalse(res["valid_boolean"])
         self.assertIn("item name", res["missing_fields"])
@@ -45,7 +54,7 @@ class TestValidationMicroservice(unittest.TestCase):
             "required_fields": ["item name"],
             "value": {"item name": "Example"},
         }
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertTrue(res["valid_boolean"])
         self.assertEqual(res["missing_fields"], [])
@@ -55,7 +64,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_us2_numeric_range_valid(self):
         """test a numeric value within the allowed range (0 to 100)"""
         payload = {"data_type": "numeric", "value": 75, "min": 0, "max": 100}
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertTrue(res["valid_boolean"])
         self.assertIn("VALID", res["codes"])
@@ -63,7 +72,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_us2_numeric_range_out_of_bounds_high(self):
         """test a numeric value above the allowed range"""
         payload = {"data_type": "numeric", "value": 120, "min": 0, "max": 100}
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertFalse(res["valid_boolean"])
         self.assertTrue(any("OUT_OF_RANGE" in code for code in res["codes"]))
@@ -71,7 +80,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_us2_numeric_range_out_of_bounds_low(self):
         """test a numeric value below the allowed range"""
         payload = {"data_type": "numeric", "value": -5, "min": 0, "max": 100}
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertFalse(res["valid_boolean"])
         self.assertTrue(any("OUT_OF_RANGE" in code for code in res["codes"]))
@@ -79,7 +88,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_us2_numeric_invalid_format(self):
         """test handling of non-numeric string input"""
         payload = {"data_type": "numeric", "value": "not-a-number"}
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertFalse(res["valid_boolean"])
         self.assertIn("INVALID_NUMERIC_FORMAT", res["codes"])
@@ -88,7 +97,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_us3_date_valid(self):
         """test a valid date string in strict YYYY-MM-DD format"""
         payload = {"data_type": "date", "value": "2026-11-15"}
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertTrue(res["valid_boolean"])
         self.assertIn("VALID", res["codes"])
@@ -96,7 +105,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_us3_date_invalid_calendar_date(self):
         """test an invalid calendar date (e.g., February 30th)"""
         payload = {"data_type": "date", "value": "2026-02-30"}
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertFalse(res["valid_boolean"])
         self.assertTrue(any("INVALID_CALENDAR_DATE" in code for code in res["codes"]))
@@ -104,7 +113,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_us3_date_invalid_format(self):
         """test a date entered in the wrong format (MM/DD/YYYY)"""
         payload = {"data_type": "date", "value": "11/15/2026"}
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertFalse(res["valid_boolean"])
         self.assertTrue(any("INVALID_DATE_FORMAT" in code for code in res["codes"]))
@@ -113,7 +122,7 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_error_missing_parameters(self):
         """test that requests lacking required parameters return an error"""
         payload = {"data_type": "date"}  # missing 'value'
-        res = requests.post(BASE_URL, json=payload).json()
+        res = self.send(payload)
 
         self.assertFalse(res["valid_boolean"])
         self.assertTrue(any("MISSING_PARAMETERS" in code for code in res["codes"]))
@@ -122,6 +131,8 @@ class TestValidationMicroservice(unittest.TestCase):
     def test_nfr_performance_100_requests(self):
         """performance NFR: 100 sequential requests must complete in under 1 second."""
         session = requests.Session()
+        # ask the server not to print these 100 requests
+        session.headers["X-Quiet"] = "1"
         sample_record = {f"field_{i}": f"value_{i}" for i in range(20)}
         payload = {
             "data_type": "record",
@@ -136,6 +147,8 @@ class TestValidationMicroservice(unittest.TestCase):
             if r.status_code == 200 and r.json().get("valid_boolean") is True:
                 success_count += 1
         elapsed = time.perf_counter() - start_time
+
+        print(f"\n  PERFORMANCE: {success_count}/100 requests passed in {elapsed:.4f} seconds (limit is 1.0s)")
 
         self.assertEqual(success_count, 100)
         self.assertLess(
